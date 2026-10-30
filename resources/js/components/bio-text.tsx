@@ -17,6 +17,12 @@ function MentionContent({ handle }: { handle: string }) {
             >
                 <img
                     key={handle}
+                    // An image that failed before hydration fires no error event React can see.
+                    ref={(element) => {
+                        if (element?.complete && element.naturalWidth === 0) {
+                            element.style.visibility = 'hidden';
+                        }
+                    }}
                     src={`https://github.com/${handle}.png?size=40`}
                     alt=""
                     width={20}
