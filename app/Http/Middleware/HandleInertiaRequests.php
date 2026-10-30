@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace App\Http\Middleware;
 
+use App\Contracts\Services\TurnProvider;
+use App\Dto\ReaderClock;
 use App\Enums\Log;
 use App\Enums\RepliesPerPage;
 use App\Http\Requests\ListNotificationsRequest;
 use App\Models\Commit;
 use App\Models\User;
+use App\Queries\BioProfilesQuery;
 use App\Queries\ConversationsQuery;
+use App\Queries\DevelopersCountQuery;
 use App\Queries\LiveFollowingQuery;
 use App\Queries\NotificationGroupsQuery;
 use App\Queries\SuggestedUsersQuery;
@@ -89,6 +93,7 @@ final class HandleInertiaRequests extends Middleware
             'repository' => config('services.github.repository'),
             'auth' => [
                 'user' => fn (): ?User => $request->user()?->loadCounts(),
+                'bioProfiles' => fn (): array => $user instanceof User ? resolve(BioProfilesQuery::class)->get($user) : [],
                 'isAdmin' => $isAdmin,
                 'automaticTranslation' => $user->automatic_translation ?? true,
                 'mustReadCommitRules' => $user instanceof User && $user->commit_rules_accepted_at === null,
@@ -100,12 +105,15 @@ final class HandleInertiaRequests extends Middleware
                     'pull_receipts' => $user->pull_receipts,
                     'requests' => (bool) config('remotes.requests'),
                     'everyone' => (bool) config('remotes.everyone'),
+                    'calls' => resolve(TurnProvider::class)->isAvailable(),
                 ] : null,
                 'pasteis' => fn (): ?array => $user?->pasteis_mode ? [
                     'remaining' => $user->pasteisRemaining(),
                     'day' => today()->toDateString(),
                 ] : null,
             ],
+            // Guests see how many developers are here, next to the sign-in button...
+            'developersCount' => fn (): ?int => $user instanceof User ? null : resolve(DevelopersCountQuery::class)->get(),
             'hasUnmoderatedCommits' => fn (): bool => $isAdmin && Commit::query()->pending()->exists(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'showsWhoToFollow' => $showsWhoToFollow,
@@ -114,6 +122,9 @@ final class HandleInertiaRequests extends Middleware
                 : collect(),
             'dimsLanes' => $request->cookie('lane_dimming') !== 'false',
             'repliesPerPage' => RepliesPerPage::of($request)->value,
+            'clock' => ReaderClock::of($request)->toArray(),
+            // Relative times count from it on the server and while the browser hydrates the page, so both agree.
+            'now' => now()->getTimestampMs(),
             // Onboarding and the operations console have no aside. Contextual suggestions must not reuse the once-cached list across pages.
             ...$suggestedUsers !== null ? [
                 'suggestedUsers' => ($context === null ? $suggestedUsers->once() : $suggestedUsers)->merge()->matchOn('id'),

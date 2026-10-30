@@ -30,8 +30,8 @@
                 <meta property="article:published_time" content="{{ $preview['publishedAt'] }}">
                 <meta property="article:author" content="{{ $preview['author'] }}">
             @endisset
-            @isset($preview['username'])
-                <meta property="profile:username" content="{{ $preview['username'] }}">
+            @isset($preview['handle'])
+                <meta property="profile:username" content="{{ $preview['handle'] }}">
             @endisset
             <meta name="twitter:card" content="summary_large_image">
             <meta name="twitter:title" content="{{ $preview['title'] }}">
@@ -45,6 +45,9 @@
                 <script type="application/ld+json">@json($preview['structuredData'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)</script>
             @endisset
         @else
+            @isset($robots)
+                <meta name="robots" content="{{ $robots }}">
+            @endisset
             <meta property="og:type" content="website">
             <meta property="og:site_name" content="/dev/null">
             <meta property="og:title" content="/dev/null">

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\GitHubOrganizationMembership;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 
@@ -35,7 +36,7 @@ final readonly class GitHub
     }
 
     /**
-     * Looks the account up by its immutable ID: a username can be renamed and then claimed by someone else.
+     * Looks the account up by its immutable ID: a handle can be renamed and then claimed by someone else.
      * Null when the account no longer exists.
      */
     public function login(string $githubId): ?string
@@ -50,6 +51,35 @@ final readonly class GitHub
         assert(is_string($login));
 
         return $login;
+    }
+
+    /**
+     * Where the user the token is for stands in the organization. The token needs the read:org scope. Matched by the
+     * organization's ID, so a renamed handle that someone else took since doesn't count.
+     */
+    public function organizationMembership(string $token, string $handle, string $githubId): GitHubOrganizationMembership
+    {
+        $response = $this->request($token)->get("user/memberships/orgs/{$handle}");
+
+        if ($response->notFound()) {
+            return GitHubOrganizationMembership::NotMember;
+        }
+
+        if ($response->forbidden() && $response->hasHeader('X-GitHub-SSO')) {
+            return GitHubOrganizationMembership::SingleSignOn;
+        }
+
+        if ($response->forbidden() && str_contains($response->fluent()->string('message')->value(), 'OAuth App access restrictions')) {
+            return GitHubOrganizationMembership::Restricted;
+        }
+
+        $membership = $response->throw()->fluent();
+
+        return $membership->string('state')->value() === 'active'
+            && in_array($membership->string('role')->value(), ['admin', 'member'], true)
+            && (string) $membership->integer('organization.id') === $githubId
+            ? GitHubOrganizationMembership::Member
+            : GitHubOrganizationMembership::NotMember;
     }
 
     /**

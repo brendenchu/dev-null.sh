@@ -31,7 +31,7 @@ it('may approve many commits', function (): void {
 
 it('queues direct replies to Tom in bulk without per-reply queries', function (): void {
     config(['ai.providers.opencode.key' => 'test', 'ai.providers.openai.key' => 'test']);
-    $tom = User::factory()->create(['username' => 'tom', 'github_id' => CreateTomFriendship::GITHUB_ID]);
+    $tom = User::factory()->create(['handle' => 'tom', 'github_id' => CreateTomFriendship::GITHUB_ID]);
 
     $queryCounts = collect([2, 6])->map(function (int $count) use ($tom): int {
         $parents = Commit::factory()->for($tom)->count($count)->create(['body' => 'A developer community.']);
@@ -95,6 +95,17 @@ it('notifies the quoted authors of the approved quotes', function (): void {
 
     expect($quoted->user->notifications()->pluck('commit_id')->all())
         ->toEqualCanonicalizing($quotes->modelKeys());
+});
+
+it("tells the author's followers about their first commit once it is approved", function (): void {
+    $author = User::factory()->create();
+    $follower = User::factory()->create();
+    $author->followers()->attach($follower);
+    $commit = Commit::factory()->for($author)->pending()->create();
+
+    resolve(UpdateCommitStatuses::class)->handle([$commit->id], CommitStatus::Approved);
+
+    expect($follower->notifications()->sole()->commit_id)->toBe($commit->id);
 });
 
 it('lifts the thread when a reply is approved', function (): void {
